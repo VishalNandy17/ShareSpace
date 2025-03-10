@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ShareSpace - Real-time File & Message Sharing</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/js/all.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/uuid/8.3.2/uuid.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js"></script>
+    <style>
+        .drop-zone {
+            transition: all 0.3s ease;
+        }
+        .drop-zone.active {
+            background-color: rgba(59, 130, 246, 0.1);
+            border-color: #3b82f6;
+        }
+        .file-item {
+            transition: all 0.2s ease;
+        }
+        .file-item:hover {
+            transform: translateY(-2px);
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e0;
+            border-radius: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #a0aec0;
+        }
+        .message-bubble {
+            max-width: 80%;
+            word-break: break-word;
+        }
+        .message-bubble.outgoing {
+            background-color: #3b82f6;
+            color: white;
+            border-radius: 18px 18px 4px 18px;
+        }
+        .message-bubble.incoming {
+            background-color: #f3f4f6;
+            color: #1f2937;
+            border-radius: 18px 18px 18px 4px;
+        }
+        .loading-dots span {
+            animation: loadingDots 1.4s infinite ease-in-out;
+            background-color: #3b82f6;
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 4px;
+        }
+        .loading-dots span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+        .loading-dots span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+        @keyframes loadingDots {
+            0%, 80%, 100% { 
+                transform: scale(0);
+            } 
+            40% { 
+                transform: scale(1.0);
+            }
+        }
+        .pop-in {
+            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        @keyframes popIn {
+            0% {
+                opacity: 0;
+                transform: scale(0.8);
+            }
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+    </style>
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body class="bg-gray-50 text-gray-800 min-h-screen">
+    <div class="flex flex-col h-screen">
+        <!-- Header -->
+        <header class="bg-white shadow-sm">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+                <div class="flex items-center">
+                    <div class="bg-blue-500 text-white p-2 rounded-lg mr-3">
+                        <i class="fas fa-share-nodes text-xl"></i>
+                    </div>
+                    <h1 class="text-xl font-bold text-blue-600">ShareSpace</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button id="theme-toggle" class="p-2 rounded-full hover:bg-gray-100 transition-colors">
+                        <i class="fas fa-moon"></i>
+                    </button>
+                    <button id="create-room-btn" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors flex items-center">
+                        <i class="fas fa-plus mr-2"></i>
+                        <span>New Room</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-1 overflow-hidden">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 h-full">
+                <div id="landing-page" class="h-full flex flex-col justify-center items-center">
+                    <div class="text-center max-w-2xl mx-auto pop-in">
+                        <div class="text-blue-500 text-6xl mb-6">
+                            <i class="fas fa-share-nodes"></i>
+                        </div>
+                        <h2 class="text-3xl font-bold mb-4">Instantly share files and messages</h2>
+                        <p class="text-gray-500 mb-8">No account needed. Files are automatically deleted after 24 hours.</p>
+                        <div class="flex flex-col space-y-4 sm:flex-row sm:space-y-0 sm:space-x-4 justify-center">
+                            <button id="join-room-btn" class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg transition-colors text-lg">
+                                <i class="fas fa-door-open mr-2"></i>
+                                Join a Room
+                            </button>
+                            <button id="create-room-btn-main" class="bg-white border border-blue-500 text-blue-500 hover:bg-blue-50 px-6 py-3 rounded-lg transition-colors text-lg">
+                                <i class="fas fa-plus mr-2"></i>
+                                Create a Room
+                            </button>
+                        </div>
+                    </div>
+                    <div class="mt-16 border-t border-gray-200 pt-8 text-center text-gray-500">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
+                            <div class="p-4">
+                                <div class="text-blue-500 text-3xl mb-3">
+                                    <i class="fas fa-bolt"></i>
+                                </div>
+                                <h3 class="font-medium text-gray-700 mb-2">Lightning Fast</h3>
+                                <p>Share files and messages in real-time with zero delay</p>
+                            </div>
+                            <div class="p-4">
+                                <div class="text-blue-500 text-3xl mb-3">
+                                    <i class="fas fa-lock"></i>
+                                </div>
+                                <h3 class="font-medium text-gray-700 mb-2">Secure Sharing</h3>
+                                <p>End-to-end encryption keeps your data private</p>
+                            </div>
+                            <div class="p-4">
+                                <div class="text-blue-500 text-3xl mb-3">
+                                    <i class="fas fa-user-shield"></i>
+                                </div>
+                                <h3 class="font-medium text-gray-700 mb-2">No Registration</h3>
+                                <p>No accounts or personal data required</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="room-page" class="h-full hidden">
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
+                        <!-- Files Panel -->
+                        <div class="lg:col-span-1 bg-white rounded-xl shadow-sm overflow-hidden flex flex-col">
+                            <div class="p-4 border-b border-gray-200 flex justify-between items-center">
+                                <h2 class="font-bold text-lg">Files</h2>
+                                <div class="text-gray-500">
+                                    <span id="file-count">0</span> files
+                                </div>
+                            </div>
+                            <div class="p-4 border-b border-gray-200 bg-gray-50">
+                                <div id="drop-zone" class="drop-zone border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:bg-gray-50 transition-colors">
+                                    <div class="text-blue-500 text-3xl mb-2">
+                                        <i class="fas fa-cloud-upload-alt"></i>
+                                    </div>
+                                    <p class="text-gray-500 mb-1">Drag & drop files here</p>
+                                    <p class="text-gray-400 text-sm">or</p>
+                                    <button id="browse-files" class="mt-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
+                                        Browse Files
+                                    </button>
+                                    <input type="file" id="file-input" class="hidden" multiple>
+                                </div>
+                            </div>
+                            <div id="file-list" class="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                                <div class="text-center text-gray-400 py-8">
+                                    <div class="text-4xl mb-2">
+                                        <i class="far fa-folder-open"></i>
+                                    </div>
+                                    <p>No files shared yet</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Chat Panel -->
+                        <div class="lg:col-span-2 bg-white rounded-xl shadow-sm overflow-hidden flex flex-col">
+                            <div class="p-4 border-b border-gray-200 flex justify-between items-center">
+                                <div class="flex items-center">
+                                    <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-500 mr-3">
+                                        <i class="fas fa-users"></i>
+                                    </div>
+                                    <div>
+                                        <h2 class="font-bold text-lg" id="room-name">Room #12345</h2>
+                                        <div class="flex items-center text-sm text-gray-500">
+                                            <span id="online-count">2</span> online
+                                            <span class="mx-2">•</span>
+                                            <div class="flex items-center">
+                                                <button id="copy-link-btn" class="flex items-center hover:text-blue-500">
+                                                    <i class="fas fa-link mr-1"></i>
+                                                    <span>Copy link</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <button id="leave-room-btn" class="text-gray-500 hover:text-red-500 p-2 rounded-full hover:bg-gray-100 transition-colors">
+                                        <i class="fas fa-sign-out-alt"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="message-container" class="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+                                <div class="text-center text-gray-400 py-8">
+                                    <div class="mx-auto w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center text-blue-300 mb-3">
+                                        <i class="fas fa-comments text-2xl"></i>
+                                    </div>
+                                    <p class="mb-1">No messages yet</p>
+                                    <p class="text-sm">Be the first to say hello!</p>
+                                </div>
+                            </div>
+                            <div class="p-4 border-t border-gray-200">
+                                <div class="flex items-end space-x-2">
+                                    <div class="flex-1 rounded-lg border border-gray-300 bg-white overflow-hidden">
+                                        <textarea id="message-input" rows="1" placeholder="Type a message..." class="w-full p-3 focus:outline-none resize-none"></textarea>
+                                    </div>
+                                    <button id="send-message-btn" class="bg-blue-500 hover:bg-blue-600 text-white p-3 rounded-lg transition-colors">
+                                        <i class="fas fa-paper-plane"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Join Room Modal -->
+        <div id="join-room-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+            <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6 pop-in">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-bold">Join a Room</h3>
+                    <button class="modal-close text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <p class="text-gray-500 mb-4">Enter the room ID to join an existing room.</p>
+                <div class="mb-4">
+                    <label for="room-id-input" class="block text-sm font-medium text-gray-700 mb-1">Room ID</label>
+                    <input type="text" id="room-id-input" class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Enter room ID">
+                </div>
+                <div class="mb-4">
+                    <label for="nickname-input" class="block text-sm font-medium text-gray-700 mb-1">Your Nickname (optional)</label>
+                    <input type="text" id="nickname-input" class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Enter your nickname">
+                </div>
+                <div class="flex justify-end space-x-3">
+                    <button class="modal-close px-4 py-2 text-gray-500 hover:text-gray-700">Cancel</button>
+                    <button id="join-room-confirm-btn" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">Join Room</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Create Room Modal -->
+        <div id="create-room-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+            <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6 pop-in">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-bold">Create a New Room</h3>
+                    <button class="modal-close text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <p class="text-gray-500 mb-4">Create a secure room to share files and messages.</p>
+                <div class="mb-4">
+                    <label for="room-name-input" class="block text-sm font-medium text-gray-700 mb-1">Room Name (optional)</label>
+                    <input type="text" id="room-name-input" class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Enter room name">
+                </div>
+                <div class="mb-4">
+                    <label for="creator-nickname-input" class="block text-sm font-medium text-gray-700 mb-1">Your Nickname (optional)</label>
+                    <input type="text" id="creator-nickname-input" class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Enter your nickname">
+                </div>
+                <div class="flex justify-end space-x-3">
+                    <button class="modal-close px-4 py-2 text-gray-500 hover:text-gray-700">Cancel</button>
+                    <button id="create-room-confirm-btn" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">Create Room</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast Notification -->
+        <div id="toast" class="fixed bottom-4 right-4 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg transform translate-y-16 opacity-0 transition-all duration-300 flex items-center">
+            <span id="toast-message"></span>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // App State
+            const state = {
+                darkMode: false,
+                roomId: null,
+                roomName: null,
+                nickname: null,
+                files: [],
+                messages: [],
+                onlineUsers: 0,
+                socket: null
+            };
+
+            // DOM elements
+            const elements = {
+                themeToggle: document.getElementById('theme-toggle'),
+                landingPage: document.getElementById('landing-page'),
+                roomPage: document.getElementById('room-page'),
+                joinRoomBtn: document.getElementById('join-room-btn'),
+                createRoomBtn: document.getElementById('create-room-btn'),
+                createRoomBtnMain: document.getElementById('create-room-btn-main'),
+                joinRoomModal: document.getElementById('join-room-modal'),
+                createRoomModal: document.getElementById('create-room-modal'),
+                joinRoomConfirmBtn: document.getElementById('join-room-confirm-btn'),
+                createRoomConfirmBtn: document.getElementById('create-room-confirm-btn'),
+                roomIdInput: document.getElementById('room-id-input'),
+                nicknameInput: document.getElementById('nickname-input'),
+                roomNameInput: document.getElementById('room-name-input'),
+                creatorNicknameInput: document.getElementById('creator-nickname-input'),
+                roomNameDisplay: document.getElementById('room-name'),
+                onlineCountDisplay: document.getElementById('online-count'),
+                leaveRoomBtn: document.getElementById('leave-room-btn'),
+                copyLinkBtn: document.getElementById('copy-link-btn'),
+                dropZone: document.getElementById('drop-zone'),
+                fileInput: document.getElementById('file-input'),
+                browseFilesBtn: document.getElementById('browse-files'),
+                fileList: document.getElementById('file-list'),
+                fileCount: document.getElementById('file-count'),
+                messageContainer: document.getElementById('message-container'),
+                messageInput: document.getElementById('message-input'),
+                sendMessageBtn: document.getElementById('send-message-btn'),
+                toast: document.getElementById('toast'),
+                toastMessage: document.getElementById('toast-message'),
+                modalCloseButtons: document.querySelectorAll('.modal-close')
+            };
+
+            // Event listeners
+            elements.joinRoomBtn.addEventListener('click', () => showModal(elements.joinRoomModal));
+            elements.createRoomBtn.addEventListener('click', () => showModal(elements.createRoomModal));
+            elements.createRoomBtnMain.addEventListener('click', () => showModal(elements.createRoomModal));
+            elements.modalCloseButtons.forEach(btn => btn.addEventListener('click', closeAllModals));
+            elements.joinRoomConfirmBtn.addEventListener('click', joinRoom);
+            elements.createRoomConfirmBtn.addEventListener('click', createRoom);
+            elements.themeToggle.addEventListener('click', toggleDarkMode);
+            elements.leaveRoomBtn.addEventListener('click', leaveRoom);
+            elements.copyLinkBtn.addEventListener('click', copyRoomLink);
+            elements.browseFilesBtn.addEventListener('click', () => elements.fileInput.click());
+            elements.fileInput.addEventListener('change', handleFileSelect);
+            elements.sendMessageBtn.addEventListener('click', sendMessage);
+            elements.messageInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+
+            // Setup file drop zone
+            setupDropZone();
+
+            // Functions
+            function showModal(modal) {
+                closeAllModals();
+                modal.classList.remove('hidden');
+            }
+
+            function closeAllModals() {
+                elements.joinRoomModal.classList.add('hidden');
+                elements.createRoomModal.classList.add('hidden');
+            }
+
+            function toggleDarkMode() {
+                state.darkMode = !state.darkMode;
+                document.body.classList.toggle('bg-gray-900', state.darkMode);
+                document.body.classList.toggle('text-white', state.darkMode);
+                
+                // Toggle dark mode styles for other elements as needed
+                if (state.darkMode) {
+                    elements.themeToggle.innerHTML = '<i class="fas fa-sun"></i>';
+                } else {
+                    elements.themeToggle.innerHTML = '<i class="fas fa-moon"></i>';
+                }
+                
+                showToast(state.darkMode ? 'Dark mode enabled' : 'Light mode enabled');
+            }
+
+            function createRoom() {
+                const roomName = elements.roomNameInput.value.trim();
+                const nickname = elements.creatorNicknameInput.value.trim() || 'Anonymous';
+                
+                fetch('/api/rooms', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ roomName, nickname })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        state.roomId = data.roomId;
+                        state.roomName = data.roomName;
+                        state.nickname = nickname;
+                        enterRoom();
+                        closeAllModals();
+                    }
+                })
+                .catch(error => showToast('Failed to create room', true));
+            }
+
+            function joinRoom() {
+                const roomId = elements.roomIdInput.value.trim();
+                if (!roomId) {
+                    showToast('Please enter a valid room ID', true);
+                    return;
+                }
+                
+                const nickname = elements.nicknameInput.value.trim() || 'Anonymous';
+                
+                // Check if room exists
+                fetch(`/api/rooms/${roomId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        state.roomId = roomId;
+                        state.roomName = data.roomName;
+                        state.nickname = nickname;
+                        
+                        enterRoom();
+                        closeAllModals();
+                        showToast('Joined room successfully');
+                    } else {
+                        showToast(data.message || 'Room not found', true);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error joining room:', error);
+                    showToast('Failed to join room', true);
+                });
+            }
+
+            function enterRoom() {
+                // Initialize socket if not already done
+                if (!state.socket) {
+                    initSocket();
+                }
+                
+                // Join the room via Socket.IO
+                state.socket.emit('joinRoom', {
+                    roomId: state.roomId,
+                    nickname: state.nickname
+                });
+                
+                // Show room page
+                elements.landingPage.classList.add('hidden');
+                elements.roomPage.classList.remove('hidden');
+                
+                // Setup auto-resizing textarea
+                setupAutoResizeTextarea();
+                
+                // Update URL with room ID (for sharing)
+                history.pushState({}, '', `?room=${state.roomId}`);
+                
+                // Focus message input
+                setTimeout(() => elements.messageInput.focus(), 100);
+            }
+
+            function leaveRoom() {
+                if (state.socket && state.roomId) {
+                    state.socket.emit('leaveRoom', {
+                        roomId: state.roomId
+                    });
+                }
+                
+                elements.roomPage.classList.add('hidden');
+                elements.landingPage.classList.remove('hidden');
+                
+                // Reset state
+                state.roomId = null;
+                state.roomName = null;
+                state.files = [];
+                state.messages = [];
+                state.onlineUsers = 0;
+                
+                updateFileList();
+                
+                // Reset URL
+                history.pushState({}, '', '/');
+                
+                showToast('Left room successfully');
+            }
+
+            function copyRoomLink() {
+                const roomUrl = `${window.location.origin}${window.location.pathname}?room=${state.roomId}`;
+                navigator.clipboard.writeText(roomUrl);
+                showToast('Room link copied to clipboard');
+            }
+
+            function setupDropZone() {
+                elements.dropZone.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    elements.dropZone.classList.add('active');
+                });
+                
+                elements.dropZone.addEventListener('dragleave', () => {
+                    elements.dropZone.classList.remove('active');
+                });
+                
+                elements.dropZone.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    elements.dropZone.classList.remove('active');
+                    
+                    if (e.dataTransfer.files.length) {
+                        handleFiles(e.dataTransfer.files);
+                    }
+                });
+            }
+
+            function handleFileSelect(e) {
+                if (e.target.files.length) {
+                    handleFiles(e.target.files);
+                }
+            }
+
+            function handleFiles(fileList) {
+                if (!state.roomId) return;
+                
+                // Create FormData for file upload
+                const formData = new FormData();
+                for (let i = 0; i < fileList.length; i++) {
+                    formData.append('files', fileList[i]);
+                }
+                formData.append('nickname', state.nickname);
+                
+                // Show loading toast
+                showToast(`Uploading ${fileList.length} file(s)...`);
+                
+                // Upload files to server
+                fetch(`/api/rooms/${state.roomId}/files`, {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showToast(`${data.files.length} file(s) uploaded successfully`);
+                    } else {
+                        showToast(data.message || 'Failed to upload files', true);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error uploading files:', error);
+                    showToast('Failed to upload files', true);
+                });
+            }
+
+            function updateFileList() {
+                elements.fileCount.textContent = state.files.length;
+                
+                if (state.files.length === 0) {
+                    elements.fileList.innerHTML = `
+                        <div class="text-center text-gray-400 py-8">
+                            <div class="text-4xl mb-2">
+                                <i class="far fa-folder-open"></i>
+                            </div>
+                            <p>No files shared yet</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                elements.fileList.innerHTML = '';
+                state.files.forEach(file => {
+                    const fileSize = formatBytes(file.size);
+                    const fileIcon = getFileIcon(file.type);
+                    const fileDate = moment(file.uploadedAt).fromNow();
+                    
+                    const fileElement = document.createElement('div');
+                    fileElement.className = 'file-item bg-white p-3 rounded-lg border border-gray-200 mb-3 shadow-sm hover:shadow-md transition-shadow';
+                    fileElement.innerHTML = `
+                        <div class="flex items-center">
+                            <div class="text-blue-500 text-xl mr-3">
+                                <i class="${fileIcon}"></i>
+                            </div>
+                            <div class="flex-1 overflow-hidden">
+                                <div class="font-medium text-gray-800 truncate">${file.name}</div>
+                                <div class="text-xs text-gray-500 flex items-center">
+                                    <span>${fileSize}</span>
+                                    <span class="mx-1">•</span>
+                                    <span>Uploaded ${fileDate}</span>
+                                </div>
+                            </div>
+                            <button class="download-file-btn p-2 text-gray-500 hover:text-blue-500 hover:bg-blue-50 rounded-full transition-colors" data-file-id="${file.id}">
+                                <i class="fas fa-download"></i>
+                            </button>
+                        </div>
+                    `;
+                    
+                    elements.fileList.appendChild(fileElement);
+                    
+                    // Add event listener for download button
+                    fileElement.querySelector('.download-file-btn').addEventListener('click', () => {
+                        downloadFile(file.id);
+                    });
+                });
+            }
+
+            function downloadFile(file) {
+                // In a real app, this would be a server request to download the file
+                const a = document.createElement('a');
+                a.href = file.url;
+                a.download = file.name;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                
+                showToast(`Downloading ${file.name}`);
+            }
+
+            function sendMessage() {
+                const content = elements.messageInput.value.trim();
+                if (!content || !state.socket || !state.roomId) return;
+                
+                // Send message via Socket.IO
+                state.socket.emit('sendMessage', {
+                    roomId: state.roomId,
+                    content: content
+                });
+                
+                elements.messageInput.value = '';
+                elements.messageInput.style.height = 'auto';
+            }
+
+            function addMessage(message) {
+                if (!message) return;
+                
+                // Store message in state if it's not already there
+                if (!state.messages.some(m => m.id === message.id)) {
+                    state.messages.push(message);
+                }
+                
+                const messageEl = document.createElement('div');
+                messageEl.className = 'message pop-in';
+                
+                // Determine if message is from current user by comparing socket IDs
+                const isMine = message.type === 'user' && message.senderId === state.socket.id;
+                
+                if (message.type === 'system') {
+                    messageEl.innerHTML = `
+                        <div class="text-center py-2">
+                            <span class="text-gray-500 inline-block py-1 px-2 rounded-full bg-gray-100 text-xs">
+                                ${message.content}
+                            </span>
+                        </div>
+                    `;
+                } else if (message.files) {
+                    // File sharing message
+                    const fileLinks = message.files.map(file => 
+                        `<a href="#" class="text-blue-500 hover:underline" onclick="event.preventDefault(); downloadFile('${file.id}');">${file.name}</a>`
+                    ).join(', ');
+                    
+                    messageEl.innerHTML = `
+                        <div class="text-center py-2">
+                            <span class="text-gray-500 inline-block py-1 px-3 rounded-full bg-gray-100 text-xs">
+                                ${message.content} (${fileLinks})
+                            </span>
+                        </div>
+                    `;
+                } else {
+                    // Normal user message
+                    const align = isMine ? 'justify-end' : 'justify-start';
+                    const bubbleClass = isMine ? 'outgoing' : 'incoming';
+                    const time = moment(message.timestamp).format('h:mm A');
+                    
+                    messageEl.innerHTML = `
+                        <div class="flex ${align} mb-1">
+                            <div class="message-bubble ${bubbleClass} p-3 rounded-lg shadow-sm">
+                                ${message.content}
+                            </div>
+                        </div>
+                        <div class="flex ${align} mb-4">
+                            <div class="text-xs text-gray-500">
+                                ${isMine ? '' : message.sender + ' • '}${time}
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                elements.messageContainer.appendChild(messageEl);
+                elements.messageContainer.scrollTop = elements.messageContainer.scrollHeight;
+            }
+
+            function setupAutoResizeTextarea() {
+                elements.messageInput.addEventListener('input', function() {
+                    this.style.height = 'auto';
+                    this.style.height = (this.scrollHeight) + 'px';
+                });
+            }
+
+            function showToast(message, isError = false) {
+                elements.toast.classList.remove('translate-y-16', 'opacity-0');
+                elements.toast.classList.add('translate-y-0', 'opacity-100');
+                
+                if (isError) {
+                    elements.toast.classList.add('bg-red-500');
+                    elements.toast.classList.remove('bg-gray-800');
+                } else {
+                    elements.toast.classList.add('bg-gray-800');
+                    elements.toast.classList.remove('bg-red-500');
+                }
+                
+                elements.toastMessage.textContent = message;
+                
+                setTimeout(() => {
+                    elements.toast.classList.add('translate-y-16', 'opacity-0');
+                    elements.toast.classList.remove('translate-y-0', 'opacity-100');
+                }, 3000);
+            }
+
+            function formatBytes(bytes, decimals = 2) {
+                if (bytes === 0) return '0 Bytes';
+                
+                const k = 1024;
+                const dm = decimals < 0 ? 0 : decimals;
+                const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                
+                return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+            }
+
+            function getFileIcon(fileType) {
+                if (fileType.includes('image')) return 'far fa-file-image';
+                if (fileType.includes('video')) return 'far fa-file-video';
+                if (fileType.includes('audio')) return 'far fa-file-audio';
+                if (fileType.includes('pdf')) return 'far fa-file-pdf';
+                if (fileType.includes('word') || fileType.includes('document')) return 'far fa-file-word';
+                if (fileType.includes('excel') || fileType.includes('sheet')) return 'far fa-file-excel';
+                if (fileType.includes('powerpoint') || fileType.includes('presentation')) return 'far fa-file-powerpoint';
+                if (fileType.includes('zip') || fileType.includes('compressed')) return 'far fa-file-archive';
+                if (fileType.includes('text')) return 'far fa-file-alt';
+                if (fileType.includes('code') || fileType.includes('javascript') || fileType.includes('html') || fileType.includes('css')) return 'far fa-file-code';
+                return 'far fa-file';
+            }
+
+            // Check URL for room ID
+            function checkUrlForRoom() {
+                const urlParams = new URLSearchParams(window.location.search);
+                const roomId = urlParams.get('room');
+                
+                if (roomId) {
+                    elements.roomIdInput.value = roomId;
+                    showModal(elements.joinRoomModal);
+                }
+            }
+
+            // Initialize Socket.IO connection
+            function initSocket() {
+                state.socket = io();
+                
+                state.socket.on('connect', () => {
+                    console.log('Connected to server');
+                });
+                
+                state.socket.on('roomData', (data) => {
+                    updateRoomData(data);
+                });
+                
+                state.socket.on('newMessage', (message) => {
+                    addMessage(message);
+                });
+                
+                state.socket.on('filesUploaded', (newFiles) => {
+                    state.files = [...state.files, ...newFiles];
+                    updateFileList();
+                });
+                
+                state.socket.on('userJoined', (data) => {
+                    state.onlineUsers = data.onlineCount;
+                    elements.onlineCountDisplay.textContent = state.onlineUsers;
+                });
+                
+                state.socket.on('userLeft', (data) => {
+                    state.onlineUsers = data.onlineCount;
+                    elements.onlineCountDisplay.textContent = state.onlineUsers;
+                });
+                
+                state.socket.on('error', (error) => {
+                    showToast(error.message, true);
+                });
+            }
+
+            // Initialize
+            checkUrlForRoom();
+        });
+    </script>
+</body>
+</html>
