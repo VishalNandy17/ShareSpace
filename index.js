@@ -22,13 +22,15 @@ const io = new Server(server, {
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static('public'));
-app.use('/uploads', express.static('uploads'));
+app.use(express.static(path.join(__dirname, 'public')));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Set up file storage
-const uploadsDir = path.join(__dirname, 'uploads');
+// For Vercel serverless environment
+const uploadsDirVercel = path.join('/tmp', 'uploads');
+const uploadsDir = process.env.VERCEL ? uploadsDirVercel : path.join(__dirname, 'uploads');
+
 if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir);
+  fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
 // Configure multer for file uploads
@@ -378,8 +380,8 @@ io.on('connection', (socket) => {
   });
 });
 
-// Export the Express app instead of the server
-module.exports = app;
+// Export for Vercel
+module.exports = server;
 
 // Start the server only if not in a serverless environment
 if (!process.env.VERCEL) {
