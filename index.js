@@ -378,11 +378,13 @@ io.on('connection', (socket) => {
   });
 });
 
-// Add this line near the end of the file, before server.listen
+// Export the server for serverless environments
 module.exports = server;
 
-// Start the server
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`ShareSpace server running on port ${PORT}`);
-});
+// Start the server only if not in a serverless environment
+if (!process.env.VERCEL) {
+  const PORT = process.env.PORT || 3000;
+  server.listen(PORT, () => {
+    console.log(`ShareSpace server running on port ${PORT}`);
+  });
+}
