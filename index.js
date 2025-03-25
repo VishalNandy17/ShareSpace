@@ -22,8 +22,8 @@ const io = new Server(server, {
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use(express.static('public'));
+app.use('/uploads', express.static('uploads'));
 
 // Set up file storage
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -378,8 +378,8 @@ io.on('connection', (socket) => {
   });
 });
 
-// Export the server for serverless environments
-module.exports = server;
+// Export the Express app instead of the server
+module.exports = app;
 
 // Start the server only if not in a serverless environment
 if (!process.env.VERCEL) {

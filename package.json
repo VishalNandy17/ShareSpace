@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "build": "npm install"
+    "build": "npm install",
+    "vercel-build": "echo hello"
   },
   "dependencies": {
     "cors": "^2.8.5",
@@ -20,5 +21,8 @@
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": "16.x"
   }
 }
